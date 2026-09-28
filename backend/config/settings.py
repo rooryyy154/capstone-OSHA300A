@@ -67,6 +67,15 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:5173',
 ]
 
+# The API is read-only and anonymous in the MVP; throttling keeps one client from hammering it
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
+    'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle'],
+    'DEFAULT_THROTTLE_RATES': {'anon': '120/min'},
+    'UNAUTHENTICATED_USER': None,
+}
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [

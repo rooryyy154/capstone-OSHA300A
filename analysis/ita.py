@@ -1,8 +1,3 @@
-"""Shared helpers for loading the OSHA ITA 300A summary CSV in the analysis notebooks.
-
-The Django `load_ita` command will reimplement the rules that come out of these
-notebooks. This module only covers what every notebook needs: a consistent load.
-"""
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +16,7 @@ ID_COLUMNS = {
 
 CASE_COLUMNS = ['total_deaths', 'total_dafw_cases', 'total_djtr_cases', 'total_other_cases']
 
-HOURS_PER_RATE_BASE = 200_000  # 100 full-time employees × 2,000 hours
+HOURS_PER_RATE_BASE = 200_000 
 
 
 def load_raw(year=2025):
@@ -45,7 +40,6 @@ def load_raw(year=2025):
 
 
 def add_derived(df):
-    """Add recordable cases, TRIR, DART, hours per employee, and NAICS prefixes."""
     df = df.copy()
     hours = df['total_hours_worked'].astype(float)
     employees = df['annual_average_employees'].astype(float)

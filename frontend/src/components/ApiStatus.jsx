@@ -14,7 +14,7 @@ export default function ApiStatus() {
     return () => controller.abort()
   }, [])
 
-  if (state.status === 'loading') return <p className="api-status">Checking API…</p>
-  if (state.status === 'error') return <p className="api-status error">API: {state.error}</p>
-  return <p className="api-status ok">API connected</p>
+  if (state.status === 'loading') return <span>Checking API…</span>
+  if (state.status === 'error') return <span className="text-danger">API: {state.error}</span>
+  return <span className="text-success">API connected</span>
 }
