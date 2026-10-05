@@ -1,0 +1,100 @@
+.contact {
+  display: grid;
+  grid-template-columns: minmax(0, 620px) minmax(220px, 1fr);
+  gap: 56px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .contact {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+.contact-form {
+  padding: 28px;
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+}
+
+.contact-form h2 {
+  font-size: 1.35rem;
+  margin-bottom: 16px;
+}
+
+.contact-form__notice {
+  color: var(--red-700);
+  font-weight: 600;
+}
+
+.contact-form__message {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.contact-form__count {
+  margin: 6px 0 0;
+  text-align: right;
+  font-size: 13px;
+  color: var(--gray-600);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Honeypot: off-screen rather than display:none, which some bots skip */
+.contact-form__website {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.contact-form__code {
+  max-width: 220px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+
+.contact-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--green-700);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--green-900);
+}
+
+.contact__aside h2 {
+  font-size: 1.15rem;
+}
+
+.contact__aside ol {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  color: var(--gray-800);
+}
+
+.contact__aside li + li {
+  margin-top: 6px;
+}
+
+.contact__aside p {
+  color: var(--gray-600);
+  font-size: 15px;
+}

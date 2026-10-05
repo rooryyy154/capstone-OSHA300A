@@ -6,7 +6,7 @@ core/rules.py and every rule is justified in docs/decisions.md.
 
 import pandas as pd
 
-from core.naics import is_valid_naics, normalize_naics
+from core.naics import OFFICIAL_TITLES, is_valid_naics, normalize_naics
 from core.rules import (
     MAX_HOURS_PER_EMPLOYEE,
     MIN_HOURS_PER_EMPLOYEE,
@@ -97,7 +97,8 @@ def drop_reasons(df):
 
 
 def industry_labels(clean):
-    """A label per 2022 NAICS code: the description plants report most often.
+    """A label per 2022 NAICS code: the official title when we have it, otherwise the description
+    plants report most often.
 
     Prefers plants that reported the 2022 code themselves, since plants remapped from an older
     code describe the older industry. Descriptions that are just the code are ignored.
@@ -122,4 +123,6 @@ def industry_labels(clean):
     native = frame[frame['native']].groupby('code')['description'].agg(most_common)
     fallback = frame.groupby('code')['description'].agg(most_common)
     labels = native.combine_first(fallback)
-    return labels.reindex(clean['naics_code'].unique()).fillna('(no description reported)')
+    labels = labels.reindex(clean['naics_code'].unique()).fillna('(no description reported)')
+    official = pd.Series(OFFICIAL_TITLES)
+    return official.reindex(labels.index).combine_first(labels)

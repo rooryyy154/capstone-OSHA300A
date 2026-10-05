@@ -21,7 +21,7 @@ async function request(path, { method = 'GET', body, signal } = {}) {
     })
   } catch (err) {
     if (err.name === 'AbortError') throw err
-    throw new ApiError('Could not reach the server. Is Django running?', 0)
+    throw new ApiError('Could not reach the PlantLine server. Is Django running?', 0)
   }
 
   const data = await response.json().catch(() => null)
@@ -40,3 +40,10 @@ export const api = {
 }
 
 export const getHealth = (options) => api.get('/health/', options)
+export const getYears = (options) => api.get('/years/', options)
+export const getInsights = (year, options) => api.get(`/insights/?year=${year}`, options)
+export const searchIndustries = (query, year, options) =>
+  api.get(`/industries/?q=${encodeURIComponent(query)}&year=${year}&limit=8`, options)
+export const postBenchmark = (values, options) => api.post('/benchmark/', values, options)
+export const postContact = (values, options) => api.post('/contact/', values, options)
+export const postContactVerify = (values, options) => api.post('/contact/verify/', values, options)

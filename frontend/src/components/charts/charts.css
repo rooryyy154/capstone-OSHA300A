@@ -1,0 +1,471 @@
+/* Shared chart anatomy: thin marks, hairline grid, text in text tokens, one tooltip per chart */
+
+.viz {
+  margin: 0;
+}
+
+.viz__caption {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--gray-600);
+}
+
+.viz-tooltip {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  max-width: 260px;
+  padding: 8px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  background: var(--white);
+  box-shadow: 0 6px 18px rgba(16, 58, 40, 0.14);
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--gray-700);
+  pointer-events: none;
+}
+
+.viz-tooltip strong {
+  font-size: 16px;
+  color: var(--gray-900);
+}
+
+.viz-tooltip__detail {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--gray-600);
+}
+
+/* ---------- Horizontal bars ---------- */
+
+.hbar {
+  position: relative;
+  --label-col: minmax(150px, 42%);
+}
+
+/* Positioned so rows paint above the reference line: bars and values hide it where they cross */
+.hbar__list {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hbar__row {
+  display: grid;
+  grid-template-columns: var(--label-col) 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 5px 0;
+  cursor: default;
+}
+
+.hbar__row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--green-600);
+}
+
+.hbar__label {
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--gray-800);
+}
+
+.hbar__sublabel {
+  display: block;
+  font-size: 13px;
+  color: var(--gray-600);
+}
+
+.hbar__row.is-highlight .hbar__label {
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.hbar__row.is-highlight .hbar__sublabel {
+  font-weight: 400;
+}
+
+.hbar__track {
+  position: relative;
+  padding-right: 3.2em;
+}
+
+.hbar__fill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hbar__bar {
+  display: block;
+  flex: none;
+  height: 18px;
+  min-width: 2px;
+  border-radius: 0 4px 4px 0;
+  background: var(--viz-muted);
+  transition: filter 0.1s;
+}
+
+.hbar__row.is-highlight .hbar__bar {
+  background: var(--viz-main);
+}
+
+.hbar__row:hover .hbar__bar {
+  filter: brightness(1.08);
+}
+
+.hbar__value {
+  padding: 0 4px 0 0;
+  background: var(--white);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-800);
+  font-variant-numeric: tabular-nums;
+}
+
+.hbar__overlay {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.hbar__overlay .hbar__track {
+  height: 100%;
+}
+
+.hbar__reference {
+  position: absolute;
+  top: -26px;
+  bottom: 0;
+  border-left: 1px solid var(--viz-reference);
+}
+
+.hbar__reference span {
+  position: absolute;
+  top: 0;
+  left: 6px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.hbar:has(.hbar__overlay) {
+  padding-top: 28px;
+}
+
+@media (max-width: 560px) {
+  .hbar__row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .hbar__overlay {
+    display: none;
+  }
+
+  .hbar:has(.hbar__overlay) {
+    padding-top: 0;
+  }
+}
+
+/* ---------- Columns ---------- */
+
+.columns {
+  position: relative;
+}
+
+.columns__plot,
+.columns__labels {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.columns__plot {
+  height: 220px;
+  padding-top: 24px;
+  border-bottom: 1px solid var(--gray-300);
+}
+
+.columns__slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.columns__slot:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--green-600);
+}
+
+.columns__bar {
+  width: min(44px, 70%);
+  border-radius: 4px 4px 0 0;
+  background: var(--viz-main);
+  transition: filter 0.1s;
+}
+
+.columns__slot:hover .columns__bar {
+  filter: brightness(1.12);
+}
+
+.columns__value {
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-800);
+  font-variant-numeric: tabular-nums;
+}
+
+.columns__labels li {
+  padding-top: 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gray-700);
+  font-variant-numeric: tabular-nums;
+}
+
+.columns__axis-label {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gray-600);
+}
+
+/* ---------- Range strips ---------- */
+
+.range-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--gray-700);
+}
+
+.range-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-legend__whisker {
+  width: 22px;
+  height: 2px;
+  background: var(--gray-500);
+}
+
+.range-legend__box {
+  width: 22px;
+  height: 10px;
+  border-radius: 4px;
+  background: var(--viz-muted);
+}
+
+.range-legend__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--viz-main);
+}
+
+.range {
+  position: relative;
+  --label-col: minmax(150px, 38%);
+}
+
+.range__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.range__row,
+.range__axis {
+  display: grid;
+  grid-template-columns: var(--label-col) 1fr;
+  gap: 16px;
+  align-items: center;
+}
+
+.range__row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--viz-grid);
+}
+
+.range__row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--green-600);
+}
+
+.range__label {
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--gray-800);
+}
+
+.range__sublabel {
+  display: block;
+  font-size: 13px;
+  color: var(--gray-600);
+}
+
+.range__track {
+  position: relative;
+  height: 28px;
+  margin-right: 3em;
+}
+
+.range__whisker,
+.range__box,
+.range__dot,
+.range__end {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.range__whisker {
+  height: 2px;
+  background: var(--gray-500);
+}
+
+.range__box {
+  height: 12px;
+  border-radius: 4px;
+  background: var(--viz-muted);
+}
+
+.range__dot {
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  border-radius: 50%;
+  background: var(--viz-main);
+  box-shadow: 0 0 0 2px var(--white);
+}
+
+.range__end {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-700);
+  font-variant-numeric: tabular-nums;
+}
+
+.range__ticks {
+  position: relative;
+  height: 24px;
+  margin-right: 3em;
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
+.range__ticks span {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .range__row,
+  .range__axis {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .range__axis > span:first-child {
+    display: none;
+  }
+}
+
+/* ---------- Histogram ---------- */
+
+.histogram {
+  position: relative;
+}
+
+.histogram svg {
+  overflow: visible;
+  font-family: var(--font-sans);
+}
+
+.histogram__grid line {
+  stroke: var(--viz-grid);
+  stroke-width: 1;
+}
+
+.histogram__grid text,
+.histogram__tick {
+  font-size: 12px;
+  fill: var(--gray-600);
+  font-variant-numeric: tabular-nums;
+}
+
+.histogram__axis-label {
+  font-size: 12px;
+  fill: var(--gray-600);
+}
+
+.histogram__baseline {
+  stroke: var(--gray-300);
+  stroke-width: 1;
+}
+
+.histogram__bar {
+  fill: var(--viz-muted);
+  pointer-events: none;
+}
+
+.histogram__bar.is-user {
+  fill: var(--viz-main);
+}
+
+.histogram__hit {
+  fill: transparent;
+  cursor: default;
+}
+
+.histogram__hit:hover {
+  fill: rgba(18, 120, 74, 0.06);
+}
+
+.histogram__hit:focus-visible {
+  outline: none;
+  stroke: var(--green-600);
+  stroke-width: 2;
+}
+
+.histogram__user line {
+  stroke: var(--green-900);
+  stroke-width: 2;
+}
+
+.histogram__user text {
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--gray-900);
+}
+
+.histogram__median line {
+  stroke: var(--viz-reference);
+  stroke-width: 1;
+}
+
+.histogram__median text {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--gray-700);
+}

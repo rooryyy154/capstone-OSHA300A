@@ -59,8 +59,12 @@ class DropRuleTests(SimpleTestCase):
 
     def test_labels_prefer_plants_that_reported_the_2022_code(self):
         df = frame(
-            {'naics_code': '452210', 'industry_description': 'Department Stores'},
-            {'naics_code': '452210', 'industry_description': 'Department Stores'},
-            {'naics_code': '455110', 'industry_description': '455110 Department Stores and Discount'},
+            {'naics_code': '446110', 'industry_description': 'Drug stores'},
+            {'naics_code': '446110', 'industry_description': 'Drug stores'},
+            {'naics_code': '456110', 'industry_description': '456110 Pharmacies and Drug Retailers'},
         )
-        self.assertEqual(industry_labels(df).to_dict(), {'455110': 'Department Stores and Discount'})
+        self.assertEqual(industry_labels(df).to_dict(), {'456110': 'Pharmacies and Drug Retailers'})
+
+    def test_official_titles_win_over_reported_descriptions(self):
+        df = frame({'naics_code': '444240', 'industry_description': 'General Merchandise Stores'})
+        self.assertEqual(industry_labels(df).to_dict(), {'444240': 'Nursery, Garden Center, and Farm Supply Retailers'})

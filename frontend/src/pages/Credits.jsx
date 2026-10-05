@@ -1,31 +1,34 @@
-const STACK = ['React', 'Vite', 'Bootstrap', 'Django', 'Django REST Framework', 'PostgreSQL']
+import PageHeader from '../components/layout/PageHeader.jsx'
+
+const STACK = ['React', 'Vite', 'Django', 'Django REST Framework', 'PostgreSQL', 'pandas', 'SciPy']
 
 export default function Credits() {
   return (
-    <div className="container py-5">
-      <h1 className="mb-4">Credits</h1>
+    <>
+      <PageHeader title="Credits" />
+      <div className="container">
+        <div className="prose">
+          <section>
+            <h2>Data</h2>
+            <p>
+              Injury and illness data comes from the{' '}
+              <a href="https://www.osha.gov/Establishment-Specific-Injury-and-Illness-Data" target="_blank" rel="noreferrer">
+                OSHA Injury Tracking Application (ITA)
+              </a>
+              , Form 300A summary data. Establishments submit this data themselves, and OSHA does not verify it.
+            </p>
+          </section>
 
-      <section className="mb-5">
-        <h2 className="h4">Data</h2>
-        <p>
-          Injury and illness data comes from the{' '}
-          <a href="https://www.osha.gov/Establishment-Specific-Injury-and-Illness-Data" target="_blank" rel="noreferrer">
-            OSHA Injury Tracking Application (ITA)
-          </a>
-          , Form 300A summary data. Establishments submit this data themselves, and OSHA does not verify it.
-        </p>
-      </section>
-
-      <section className="mb-5">
-        <h2 className="h4">Built with</h2>
-        <div className="d-flex flex-wrap gap-2">
-          {STACK.map((tool) => (
-            <span key={tool} className="badge text-bg-secondary fs-6 fw-normal">
-              {tool}
-            </span>
-          ))}
+          <section>
+            <h2>Built with</h2>
+            <ul className="tag-list">
+              {STACK.map((tool) => (
+                <li key={tool}>{tool}</li>
+              ))}
+            </ul>
+          </section>
         </div>
-      </section>
-    </div>
+      </div>
+    </>
   )
 }

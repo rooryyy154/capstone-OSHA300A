@@ -1,6 +1,8 @@
 from decimal import Decimal
 from itertools import count
+from unittest import mock
 
+from django.db import OperationalError
 from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
@@ -75,8 +77,9 @@ class CalculationTests(SimpleTestCase):
 
 
 class BenchmarkApiTests(TestCase):
-    """Peer data: 332710 has 40 private plants (10 at TRIR 0, then 2, 4, ... 60) and 35
-    government plants at TRIR 10. 332720 has only 10 private plants, so it falls back to 3327."""
+    """Peer data for 2025: 332710 has 40 private plants (10 at TRIR 0, then 2, 4, ... 60) and 35
+    government plants at TRIR 10. 332720 has only 10 private plants, so it falls back to 3327.
+    An older year, 2024, has 30 private 332710 plants at TRIR 2."""
 
     @classmethod
     def setUpTestData(cls):
@@ -84,12 +87,27 @@ class BenchmarkApiTests(TestCase):
         rows += [plant('332710', cases) for cases in range(1, 31)]
         rows += [plant('332710', 5, establishment_type=3) for _ in range(35)]
         rows += [plant('332720', 1) for _ in range(10)]
+        rows += [plant('332710', 1, year=2024) for _ in range(30)]
         Establishment.objects.bulk_create(rows)
         NaicsIndustry.objects.create(code='332710', label='Machine shops')
         CohortStats.refresh()
 
     def post(self, data):
         return APIClient().post('/api/benchmark/', data, format='json')
+
+    def test_years_lists_loaded_years_newest_first(self):
+        body = APIClient().get('/api/years/').json()
+        self.assertEqual(body, {'years': [2025, 2024], 'latest': 2025})
+
+    def test_each_year_has_its_own_peers(self):
+        latest = self.post(form()).json()
+        older = self.post(form(year=2024)).json()
+        self.assertEqual((latest['input']['year'], latest['cohort']['establishment_count']), (2025, 40))
+        self.assertEqual((older['input']['year'], older['cohort']['establishment_count']), (2024, 30))
+        self.assertEqual(older['cohort']['median'], 2.0)
+        search = APIClient().get('/api/industries/', {'q': '332710', 'year': 2024}).json()
+        self.assertEqual(search[0]['establishment_count'], 30)
+        self.assertEqual(APIClient().get('/api/insights/', {'year': 2024}).json()['totals']['establishments'], 30)
 
     def test_zero_cases_ties_with_the_zero_group(self):
         body = self.post(form()).json()
@@ -153,6 +171,16 @@ class BenchmarkApiTests(TestCase):
         response = self.post(form(year=2019))
         self.assertEqual(response.status_code, 400)
 
+    def test_insights_pool_rates_by_hours(self):
+        body = APIClient().get('/api/insights/').json()
+        # 30 private plants with 1..30 cases and 10 with 0 = 465 cases; 10 plants with 1 case; all 100,000 hours
+        manufacturing = next(s for s in body['sectors'] if s['code'] == '31-33')
+        self.assertEqual(manufacturing['title'], 'Manufacturing')
+        self.assertEqual(manufacturing['establishments'], 50)
+        self.assertEqual(manufacturing['trir'], round(475 * 200_000 / 5_000_000, 2))
+        self.assertEqual(body['totals']['establishments'], 85)
+        self.assertEqual([o['ownership'] for o in body['ownership']], ['private', 'local_government'])
+
     def test_industry_search(self):
         response = APIClient().get('/api/industries/', {'q': 'machine'})
         self.assertEqual(response.json(), [{'code': '332710', 'label': 'Machine shops', 'establishment_count': 75}])
@@ -162,3 +190,24 @@ class EmptyDatabaseTests(TestCase):
     def test_benchmark_before_any_load(self):
         response = APIClient().post('/api/benchmark/', form(), format='json')
         self.assertEqual(response.status_code, 503)
+
+
+class ErrorResponseTests(SimpleTestCase):
+    """Unexpected failures come back as JSON status codes, not Django's HTML error page."""
+
+    def post(self):
+        return APIClient().post('/api/benchmark/', form(), format='json')
+
+    def test_database_down_is_503(self):
+        with mock.patch('api.views.run_benchmark', side_effect=OperationalError('connection refused')):
+            with self.assertLogs('api.exceptions', 'ERROR'):
+                response = self.post()
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {'detail': 'The database is unavailable.'})
+
+    def test_unexpected_error_is_500(self):
+        with mock.patch('api.views.run_benchmark', side_effect=RuntimeError('bug')):
+            with self.assertLogs('api.exceptions', 'ERROR'):
+                response = self.post()
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {'detail': 'Internal server error.'})

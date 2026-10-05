@@ -15,6 +15,9 @@ The thresholds live in one place in code, `backend/core/rules.py`, and are used 
 | D-007 | Government establishments | Decided | Keep them; the user picks the peer group (private by default) |
 | D-008 | Other inconsistent rows | Decided | Drop invalid NAICS and cases > employees; keep the rest |
 | D-009 | Minimum cohort size | Decided | 30 plants; fall back 6 → 4 → 3 NAICS digits |
+| D-010 | Contact form (post-MVP) | Built; keys and provider pending | Turnstile captcha, 6-digit email code, synchronous email; isolated `contact/` app |
+
+D-001 to D-009 are data decisions. D-010 is a product decision, recorded here because it changes the "read-only system" rule.
 
 ## Quality report, 2025 file
 
@@ -166,11 +169,52 @@ Government is 97% of sector 92 and 82% of sector 61 (education), so dropping it 
 
 **Why add 3 digits:** the original design fell back only to 4 digits. With the government filter (D-007), peer groups are smaller, and the 3-digit level gives 2.3% more government plants a percentile. A 3-digit subsector (for example 332, fabricated metal products) is still a meaningful comparison. The 2-digit level is not (31–33 is all of manufacturing).
 
+## D-010 · Contact form with email verification (post-MVP)
+
+**Status:** built and tested. It runs on Cloudflare's test keys, with emails printed in the Django terminal, until the real Turnstile keys and an SMTP provider are configured. It must not delay the analysis notebook.
+
+**Decision:** the Comments page becomes a Contact page where a visitor sends me a message (email + message body) after proving they aren't a bot and that their email is real. The design is in `docs/architecture.md`, section 4.6. In short:
+
+- **Captcha:** Cloudflare Turnstile, with the token validated on the server against Cloudflare's `siteverify`. The frontend alone is never trusted.
+- **Email verification:** a 6-digit code emailed to the visitor and entered as a second step in the same React component. Only a keyed hash of the code is stored, with a 15-minute expiry and a limit of 5 wrong attempts.
+- **Email sending:** Django `send_mail` over SMTP with a transactional provider (Resend or Brevo, TBD), sent synchronously inside the request. `From` is my own or the provider's domain; the visitor's address goes in `Reply-To`.
+- **Anti-abuse:** a hidden honeypot field and dedicated DRF throttle scopes: 5 messages per hour per IP, and 30 code checks per hour.
+- **Isolation:** a new `contact/` Django app with one table, `contact_message`. The benchmark apps (`core/`, `ingest/`, `api/`) stay read-only.
+
+**Alternatives considered:**
+
+| Choice | Alternative | Why not |
+|---|---|---|
+| Turnstile | reCAPTCHA, hCaptcha | Reasons to be written when this is built. |
+| 6-digit code | Verification link | A link needs its own verification route and a token in the URL. The code keeps the whole flow inside one component. |
+| Synchronous email | Celery (background queue) | A worker and a message broker are a lot of infrastructure for a form that sends a handful of emails. |
+| Own endpoint + table | Formspree, Web3Forms | Reasons to be written when this is built. |
+
+**Consequences:**
+
+- The system is no longer purely read-only. The exception is one isolated write path: a mailbox, with no accounts and no session state.
+- The cut line in `architecture.md` was reworded: "no user state" now means no accounts and no saved user data; the contact mailbox is allowed.
+- `contact_message` is the first table with personal data (visitors' email addresses). How long rows are kept is TBD; today nothing deletes them.
+
+**Values chosen while building** (all in `backend/contact/rules.py` or `config/settings.py`, easy to change):
+
+| Open point | Chosen | Why |
+|---|---|---|
+| Code expiry | 15 minutes | The top of the 10 to 15 minute range: email can be slow to arrive. |
+| Maximum message length | 2,000 characters | Room for a detailed question, small enough to limit abuse. |
+| Message throttle | 5 per hour per IP (30 in development) | The rate proposed in the design; looser locally so the flow can be tested. |
+| Code-check throttle | 30 per hour per IP | Each message already allows only 5 wrong codes. |
+| After 5 wrong codes | The message is stored as `expired` | Keeps the three statuses of the design; no new value needed. |
+| Filled honeypot | Same `201` answer as a real submission; nothing stored or sent | A bot that sees an error would learn to leave the field empty. |
+| Status codes | `400` bad captcha or wrong code, `410` expired or too many attempts, `404` unknown id, `503` email failure | `410` says "this code is gone, start again", which is what the form does. |
+| Code hash | HMAC-SHA256 keyed with `SECRET_KEY`, bound to the message id | A plain hash of a 6-digit code can be reversed by trying all million values. |
+- Sending email inside the request means a slow or failing SMTP provider makes the form slow or fail. Accepted for now; revisit if it happens.
+
 ---
 
 ## Known limitations
 
 - **One year of data (2025).** The model and command support more (`year` is a column), but only this file is loaded.
-- **Industry labels** come from the description plants type most often for each code, not from the official Census titles, so a few are odd. Loading the Census 2022 NAICS titles would fix this, and it goes with option A of D-006.
+- **Industry labels.** Sectors and the industries the landing page highlights use official NAICS 2022 titles (`backend/core/naics.py`). Every other code uses the description plants type most often, so a few are odd. Loading the full Census 2022 title file would fix this, and it goes with option A of D-006.
 - **Establishments that must report.** OSHA only requires electronic 300A submissions from some establishments (by size and industry), so the data isn't a random sample of all US workplaces.
 - **Self-reported data.** Undercounting injuries would make a plant look better than it is, and nothing in the file can detect that.

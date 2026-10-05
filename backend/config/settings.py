@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'core',
     'ingest',
     'api',
+    'contact',
 ]
 
 MIDDLEWARE = [
@@ -66,14 +67,23 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
+# In development Vite moves to 5174, 5175... when 5173 is taken; accept any local port
+if DEBUG:
+    CORS_ALLOWED_ORIGIN_REGEXES = [r'^http://(localhost|127\.0\.0\.1):\d+$']
 
 # The API is read-only and anonymous in the MVP; throttling keeps one client from hammering it
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
     'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle'],
-    'DEFAULT_THROTTLE_RATES': {'anon': '120/min'},
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/min',
+        # Contact form (D-010): strict in production, looser locally so the flow can be tested
+        'contact': '30/hour' if DEBUG else '5/hour',
+        'contact_verify': '30/hour',
+    },
     'UNAUTHENTICATED_USER': None,
+    'EXCEPTION_HANDLER': 'api.exceptions.api_exception_handler',
 }
 
 ROOT_URLCONF = 'config.urls'
@@ -151,8 +161,39 @@ STATIC_URL = 'static/'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}
+# With EMAIL_HOST set, email goes out through that SMTP provider. Without it (local
+# development), emails are printed in this terminal instead of being sent.
+if os.getenv('EMAIL_HOST'):
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
+            'OPTIONS': {
+                'host': os.environ['EMAIL_HOST'],
+                'port': int(os.getenv('EMAIL_PORT', '587')),
+                'username': os.getenv('EMAIL_HOST_USER', ''),
+                'password': os.getenv('EMAIL_HOST_PASSWORD', ''),
+                'use_tls': True,
+                'timeout': 10,
+            },
+        },
+    }
+else:
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        },
+    }
+
+# The sender of every email: an address on our own (or the provider's) domain, never a visitor's
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'PlantLine <noreply@localhost>')
+
+
+# Contact form (docs/decisions.md, D-010)
+
+# Cloudflare publishes this dummy secret for development: it accepts the tokens of the dummy
+# site key and nothing real. Production must set TURNSTILE_SECRET_KEY, or every message is refused.
+TURNSTILE_TEST_SECRET_KEY = '1x0000000000000000000000000000000AA'
+TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY') or (TURNSTILE_TEST_SECRET_KEY if DEBUG else '')
+
+# Where verified messages are forwarded
+CONTACT_RECIPIENT_EMAIL = os.getenv('CONTACT_RECIPIENT_EMAIL') or ('owner@localhost' if DEBUG else '')

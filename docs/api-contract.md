@@ -105,8 +105,38 @@ Calculates a plant's TRIR and compares it with its industry peers. Writes nothin
 | `400` | `{ "<field>": ["message"] }` | Field validation, as in the table above |
 | `400` | `{ "detail": "No OSHA data loaded for 2019." }` | `year` not loaded |
 | `503` | `{ "detail": "No OSHA data is loaded yet. …" }` | Database empty: run `load_ita` |
+| `503` | `{ "detail": "The database is unavailable." }` | PostgreSQL is down or unreachable (any endpoint) |
+| `500` | `{ "detail": "Internal server error." }` | Any other unexpected failure (any endpoint); the traceback goes to the server log |
+| `429` | `{ "detail": "Request was throttled. …" }` | More than 120 requests per minute from one client |
 
-## GET `/industries/?q=&limit=`
+Every error body is JSON, never Django's HTML error page (`api/exceptions.py`). The frontend shows each as a status screen: code, short title, one sentence and a "Try again" button. When the server can't be reached at all there is no HTTP status, and the frontend shows it as 503.
+
+## GET `/years/`
+
+The report years loaded in the database, newest first. The site's year selector is built from it, so loading another year with `load_ita` makes it appear with no frontend change.
+
+```json
+{ "years": [2025], "latest": 2025 }
+```
+
+`latest` is `null` when nothing is loaded.
+
+## GET `/insights/?year=`
+
+Headline figures for the landing page, for one year (default: the latest). Rates are pooled (Σ cases × 200,000 ÷ Σ hours). `totals` and `ownership` cover all establishments; `sectors`, `size_bands`, `top_industries` and `largest_industries` cover private establishments only.
+
+| Key | Contents |
+|---|---|
+| `totals` | Establishments, employees, hours, recordable and DART cases, deaths, pooled TRIR and DART, share with zero cases, median TRIR |
+| `ownership` | Private, state and local government: establishments, pooled and median TRIR |
+| `sectors` | Each NAICS sector (`31-33`, `44-45`… with official titles): establishments, TRIR, DART, deaths, sorted by TRIR |
+| `size_bands` | Employee bands (1–19 … 1,000+): establishments, TRIR, share with zero cases |
+| `top_industries` | The 8 highest-TRIR 6-digit industries with at least 200 establishments |
+| `largest_industries` | The 5 industries with the most establishments, with TRIR p10, p25, median, p75, p90 |
+
+Cached per year and row count, so a reload with `load_ita` is picked up on the next request.
+
+## GET `/industries/?q=&year=&limit=`
 
 NAICS search for the form's autocomplete. `q` is either a code prefix (`3327`) or words from the label (`machine`). A full 6-digit old retail code is remapped (`452210` → `455110`). `limit` defaults to 20, maximum 50.
 
@@ -116,8 +146,67 @@ NAICS search for the form's autocomplete. `q` is either a code prefix (`3327`) o
 ]
 ```
 
-`establishment_count` counts all owners in the latest year at the 6-digit level.
+`establishment_count` counts all owners in `year` (default: the latest) at the 6-digit level.
+
+`year` errors on `/insights/` and `/industries/` follow the benchmark endpoint: `400` for a year that isn't loaded, `503` when the database is empty.
 
 ## GET `/health/`
 
 `{ "status": "ok" }`: the frontend uses it to check that the API is reachable.
+
+## POST `/contact/`
+
+Step 1 of the contact form (D-010): checks the captcha and the fields, stores the message as pending, and emails a 6-digit code to the visitor. Throttled at 5 requests per hour per IP (30 in development).
+
+| Field | Type | Required | Rules |
+|---|---|---|---|
+| `email` | string | yes | A valid email address |
+| `message` | string | yes | 1 to 2,000 characters |
+| `captcha_token` | string | yes | The token the Turnstile widget produced. Checked with Cloudflare's `siteverify`; a token works once |
+| `website` | string | no | Honeypot. Real visitors never see it; leave it empty |
+
+### Response `201`
+
+```json
+{ "id": "4d843375-f191-4de1-bdb5-3be647de2e92", "email": "visitor@example.com", "expires_in_minutes": 15 }
+```
+
+`id` identifies the pending message in step 2. A request with the honeypot filled gets the same shape of answer, but nothing is stored or sent.
+
+### Errors
+
+| Status | Body | When |
+|---|---|---|
+| `400` | `{ "email": ["…"], "message": ["…"] }` | Invalid fields |
+| `400` | `{ "captcha_token": ["…"] }` | The captcha token is missing, spent or rejected by Cloudflare |
+| `429` | `{ "detail": "Request was throttled. …" }` | Too many messages from this IP |
+| `503` | `{ "detail": "We couldn't send the email right now. …" }` | The code email couldn't be sent; the pending message is removed |
+
+## POST `/contact/verify/`
+
+Step 2: checks the code and, if it is right, emails the message to the site owner with the visitor's address in `Reply-To`. Throttled at 30 requests per hour per IP.
+
+```json
+{ "id": "4d843375-f191-4de1-bdb5-3be647de2e92", "code": "980219" }
+```
+
+### Response `200`
+
+```json
+{ "status": "verified" }
+```
+
+Verifying an already verified message returns `200` again and sends nothing.
+
+### Errors
+
+| Status | Body | When |
+|---|---|---|
+| `400` | `{ "code": ["That code isn't right. You have 4 tries left."] }` | Wrong code; counts as one of 5 attempts |
+| `400` | `{ "code": ["Enter the 6-digit code from the email."] }` | Not 6 digits; not counted as an attempt |
+| `404` | `{ "detail": "…", "error": "not_found" }` | Unknown `id` |
+| `410` | `{ "detail": "…", "error": "expired" }` | More than 15 minutes since the code was sent |
+| `410` | `{ "detail": "…", "error": "too_many_attempts" }` | 5 wrong codes; the message can't be verified anymore |
+| `503` | `{ "detail": "We couldn't send the email right now. …" }` | The message couldn't be forwarded; the same code can be submitted again |
+
+On `404` and `410` the frontend returns to the form with the message kept, so the visitor can send it again and get a new code.

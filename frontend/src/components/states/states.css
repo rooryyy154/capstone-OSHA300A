@@ -1,0 +1,194 @@
+/* ---------- Loader: four dots moving in a wave ---------- */
+
+.loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 56px 24px;
+  text-align: center;
+}
+
+.loader__dots {
+  width: 70px;
+  height: 20px;
+  overflow: visible;
+}
+
+.loader__dots circle {
+  fill: var(--green-700);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: loader-wave 1.1s ease-in-out infinite;
+}
+
+@keyframes loader-wave {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0) scale(0.75);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-6px) scale(1);
+  }
+}
+
+.loader__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.loader__label {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.loader__detail {
+  font-size: 15px;
+  color: var(--gray-600);
+}
+
+.loader--inline {
+  flex-direction: row;
+  gap: 10px;
+  padding: 0;
+  text-align: left;
+}
+
+.loader--inline .loader__dots {
+  width: 36px;
+  height: 12px;
+}
+
+.loader--inline .loader__label {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: inherit;
+}
+
+.button .loader__dots circle {
+  fill: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader__dots circle {
+    animation-name: loader-fade;
+    animation-duration: 1.6s;
+  }
+
+  @keyframes loader-fade {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}
+
+/* ---------- Status message: code, title, sentence ---------- */
+
+.status {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  padding: 36px;
+  border: 1px solid var(--gray-200);
+  border-top: 6px solid var(--gray-600);
+  background: var(--gray-50);
+}
+
+.status__code {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: clamp(3rem, 2.4rem + 2.4vw, 4.25rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--green-800);
+  letter-spacing: -0.02em;
+}
+
+.status__title {
+  margin-bottom: 6px;
+  font-size: 1.35rem;
+}
+
+.status__message {
+  margin: 0;
+  max-width: 520px;
+  color: var(--gray-700);
+}
+
+.status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.status--compact {
+  gap: 18px;
+  padding: 18px 20px;
+  border-top-width: 4px;
+}
+
+.status--compact .status__code {
+  font-size: 2rem;
+}
+
+.status--compact .status__title {
+  font-size: 1.1rem;
+}
+
+@media (max-width: 520px) {
+  .status {
+    flex-direction: column;
+    gap: 12px;
+    padding: 24px;
+  }
+}
+
+/* A previous result stays visible, dimmed, with the loader floating over it */
+.refresh-overlay {
+  position: absolute;
+  z-index: 5;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  background: var(--white);
+  box-shadow: 0 8px 24px rgba(16, 58, 40, 0.14);
+  color: var(--gray-800);
+}
+
+.not-found {
+  padding-top: 56px;
+}
+
+.calc__result-wrap {
+  position: relative;
+}
+
+/* Combobox dropdown when it has a state to report instead of options */
+.combobox__state {
+  padding: 12px 14px;
+  font-size: 15px;
+  color: var(--gray-700);
+}
+
+.combobox__state p {
+  margin: 0;
+}
+
+.page-alert {
+  padding-top: 28px;
+}

@@ -108,3 +108,85 @@ def is_valid_naics(code):
 def normalize_naics(code):
     """Return the 2022 code for a reported NAICS code (unchanged when no mapping applies)."""
     return RETAIL_TO_2022.get(code, code)
+
+
+# Official NAICS 2022 sector titles. Manufacturing, retail and transportation span several
+# 2-digit codes, so sectors are keyed by their published ranges.
+SECTOR_TITLES = {
+    '11': 'Agriculture, Forestry, Fishing and Hunting',
+    '21': 'Mining, Quarrying, and Oil and Gas Extraction',
+    '22': 'Utilities',
+    '23': 'Construction',
+    '31-33': 'Manufacturing',
+    '42': 'Wholesale Trade',
+    '44-45': 'Retail Trade',
+    '48-49': 'Transportation and Warehousing',
+    '51': 'Information',
+    '52': 'Finance and Insurance',
+    '53': 'Real Estate and Rental and Leasing',
+    '54': 'Professional, Scientific, and Technical Services',
+    '55': 'Management of Companies and Enterprises',
+    '56': 'Administrative and Support and Waste Management and Remediation Services',
+    '61': 'Educational Services',
+    '62': 'Health Care and Social Assistance',
+    '71': 'Arts, Entertainment, and Recreation',
+    '72': 'Accommodation and Food Services',
+    '81': 'Other Services (except Public Administration)',
+    '92': 'Public Administration',
+}
+SECTOR_RANGES = {'31': '31-33', '32': '31-33', '33': '31-33', '44': '44-45', '45': '44-45', '48': '48-49', '49': '48-49'}
+
+
+def sector_of(code):
+    """The sector key ('31-33', '62', ...) a 6-digit code belongs to."""
+    return SECTOR_RANGES.get(code[:2], code[:2])
+
+
+# Official 2022 titles for industries where the most common self-reported description is
+# misleading or clumsy (e.g. 444240 is mostly described as "General Merchandise Stores").
+# Loading the full Census title file would replace this list (see docs/decisions.md).
+OFFICIAL_TITLES = {
+    '112210': 'Hog and Pig Farming',
+    '213112': 'Support Activities for Oil and Gas Operations',
+    '221310': 'Water Supply and Irrigation Systems',
+    '236220': 'Commercial and Institutional Building Construction',
+    '237120': 'Oil and Gas Pipeline and Related Structures Construction',
+    '237310': 'Highway, Street, and Bridge Construction',
+    '238220': 'Plumbing, Heating, and Air-Conditioning Contractors',
+    '311612': 'Meat Processed from Carcasses',
+    '325199': 'All Other Basic Organic Chemical Manufacturing',
+    '332710': 'Machine Shops',
+    '334220': 'Radio and Television Broadcasting and Wireless Communications Equipment Manufacturing',
+    '334511': 'Search, Detection, Navigation, Guidance, Aeronautical, and Nautical System and Instrument Manufacturing',
+    '336390': 'Other Motor Vehicle Parts Manufacturing',
+    '424490': 'Other Grocery and Related Products Merchant Wholesalers',
+    '441110': 'New Car Dealers',
+    '441340': 'Tire Dealers',
+    '444110': 'Home Centers',
+    '444240': 'Nursery, Garden Center, and Farm Supply Retailers',
+    '445110': 'Supermarkets and Other Grocery Retailers (except Convenience Retailers)',
+    '445132': 'Vending Machine Operators',
+    '455110': 'Department Stores',
+    '455211': 'Warehouse Clubs and Supercenters',
+    '481111': 'Scheduled Passenger Air Transportation',
+    '484121': 'General Freight Trucking, Long-Distance, Truckload',
+    '492110': 'Couriers and Express Delivery Services',
+    '492210': 'Local Messengers and Local Delivery',
+    '493110': 'General Warehousing and Storage',
+    '541330': 'Engineering Services',
+    '541380': 'Testing Laboratories and Services',
+    '541940': 'Veterinary Services',
+    '551114': 'Corporate, Subsidiary, and Regional Managing Offices',
+    '561210': 'Facilities Support Services',
+    '561320': 'Temporary Help Services',
+    '621111': 'Offices of Physicians (except Mental Health Specialists)',
+    '622110': 'General Medical and Surgical Hospitals',
+    '623110': 'Nursing Care Facilities (Skilled Nursing Facilities)',
+    '623312': 'Assisted Living Facilities for the Elderly',
+    '623990': 'Other Residential Care Facilities',
+    '624110': 'Child and Youth Services',
+    '624221': 'Temporary Shelters',
+    '721110': 'Hotels (except Casino Hotels) and Motels',
+    '722310': 'Food Service Contractors',
+    '722511': 'Full-Service Restaurants',
+}
