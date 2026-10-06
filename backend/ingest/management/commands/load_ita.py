@@ -6,12 +6,24 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from core.models import CohortStats, Establishment, NaicsIndustry
+from core.naics import OFFICIAL_TITLES
 from core.rules import incidence_rate
 from ingest import cleaning
 
 
 def text(value, max_length):
     return '' if pd.isna(value) else str(value).strip()[:max_length]
+
+
+def save_labels(labels, year):
+    """Upsert the NAICS catalog. The newest loaded year names the industries; an older year
+    only adds the codes the catalog is missing, so labels don't depend on the load order.
+    Official titles apply whichever year is loaded."""
+    rows = [NaicsIndustry(code=code, label=label[:255]) for code, label in labels.items()]
+    is_newest = not Establishment.objects.filter(year__gt=year).exists()
+    renamed = rows if is_newest else [row for row in rows if row.code in OFFICIAL_TITLES]
+    NaicsIndustry.objects.bulk_create(rows, ignore_conflicts=True)
+    NaicsIndustry.objects.bulk_create(renamed, update_conflicts=True, unique_fields=['code'], update_fields=['label'])
 
 
 class Command(BaseCommand):
@@ -52,12 +64,7 @@ class Command(BaseCommand):
             Establishment.objects.bulk_create(self.build_rows(clean, year), batch_size=options['batch_size'])
 
             labels = cleaning.industry_labels(clean)
-            NaicsIndustry.objects.bulk_create(
-                [NaicsIndustry(code=code, label=label[:255]) for code, label in labels.items()],
-                update_conflicts=True,
-                unique_fields=['code'],
-                update_fields=['label'],
-            )
+            save_labels(labels, year)
             # Codes no loaded year uses anymore (e.g. after a rule change) leave the catalog
             NaicsIndustry.objects.exclude(code__in=Establishment.objects.values('naics_code')).delete()
             CohortStats.refresh()

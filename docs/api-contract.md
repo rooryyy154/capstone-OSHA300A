@@ -116,7 +116,7 @@ Every error body is JSON, never Django's HTML error page (`api/exceptions.py`). 
 The report years loaded in the database, newest first. The site's year selector is built from it, so loading another year with `load_ita` makes it appear with no frontend change.
 
 ```json
-{ "years": [2025], "latest": 2025 }
+{ "years": [2025, 2024], "latest": 2025 }
 ```
 
 `latest` is `null` when nothing is loaded.

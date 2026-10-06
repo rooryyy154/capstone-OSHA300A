@@ -1,7 +1,10 @@
 import pandas as pd
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
+from api.tests import plant
+from core.models import Establishment, NaicsIndustry
 from ingest.cleaning import COUNT_COLUMNS, add_derived, drop_reasons, industry_labels
+from ingest.management.commands.load_ita import save_labels
 
 GOOD = {
     'naics_code': '332710',
@@ -68,3 +71,28 @@ class DropRuleTests(SimpleTestCase):
     def test_official_titles_win_over_reported_descriptions(self):
         df = frame({'naics_code': '444240', 'industry_description': 'General Merchandise Stores'})
         self.assertEqual(industry_labels(df).to_dict(), {'444240': 'Nursery, Garden Center, and Farm Supply Retailers'})
+
+
+class CatalogTests(TestCase):
+    """The NAICS catalog is shared by every year, so the newest loaded year names the industries."""
+
+    def setUp(self):
+        Establishment.objects.bulk_create([plant('332721', 1, year=2025)])
+        NaicsIndustry.objects.create(code='332721', label='Precision turned products')
+
+    def labels(self):
+        return dict(NaicsIndustry.objects.values_list('code', 'label'))
+
+    def test_an_older_year_only_adds_missing_codes(self):
+        save_labels(pd.Series({'332721': 'Screw machine products', '522120': 'Savings institutions'}), 2024)
+        self.assertEqual(self.labels(), {'332721': 'Precision turned products', '522120': 'Savings institutions'})
+
+    def test_official_titles_apply_from_any_year(self):
+        NaicsIndustry.objects.create(code='455110', label='Discount stores')
+        save_labels(pd.Series({'455110': 'Department Stores'}), 2024)
+        self.assertEqual(self.labels()['455110'], 'Department Stores')
+
+    def test_the_newest_year_renames(self):
+        save_labels(pd.Series({'332721': 'Turned products'}), 2025)
+        save_labels(pd.Series({'332721': 'Precision turned product manufacturing'}), 2026)
+        self.assertEqual(self.labels(), {'332721': 'Precision turned product manufacturing'})

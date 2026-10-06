@@ -1,6 +1,6 @@
 # Data decisions log
 
-Every rule that changes which OSHA rows count, or how a plant is compared, is recorded here: what was decided, what else was considered, and why. The evidence comes from `analysis/02_cleaning_rules.ipynb` and from the `load_ita` quality report on the 2025 file (`ita_300a_2025.csv`, calendar year 2025).
+Every rule that changes which OSHA rows count, or how a plant is compared, is recorded here: what was decided, what else was considered, and why. The evidence comes from `analysis/02_cleaning_rules.ipynb` and from the `load_ita` quality report on the 2025 file (`ita_300a_2025.csv`, calendar year 2025). The rules were set on 2025 and then applied unchanged to the 2024 file (D-011).
 
 The thresholds live in one place in code, `backend/core/rules.py`, and are used both when loading OSHA's data and when validating the user's form. A plant we would drop from the data can't be benchmarked against it either.
 
@@ -16,8 +16,9 @@ The thresholds live in one place in code, `backend/core/rules.py`, and are used 
 | D-008 | Other inconsistent rows | Decided | Drop invalid NAICS and cases > employees; keep the rest |
 | D-009 | Minimum cohort size | Decided | 30 plants; fall back 6 → 4 → 3 NAICS digits |
 | D-010 | Contact form (post-MVP) | Built; keys and provider pending | Turnstile captcha, 6-digit email code, synchronous email; isolated `contact/` app |
+| D-011 | More than one year | Decided | Same rules for every year; the newest loaded year names the industries |
 
-D-001 to D-009 are data decisions. D-010 is a product decision, recorded here because it changes the "read-only system" rule.
+D-001 to D-009 and D-011 are data decisions. D-010 is a product decision, recorded here because it changes the "read-only system" rule.
 
 ## Quality report, 2025 file
 
@@ -41,6 +42,50 @@ Output of `python manage.py load_ita --file ../data/raw/ita_300a_2025.csv`. Each
 
 Of the accepted plants, 303,462 are private, 14,116 state government and 9,598 local government. 18,443 retail rows were remapped to their 2022 NAICS code (D-006).
 
+## Quality report, 2024 file
+
+Output of `python manage.py load_ita --file ../data/raw/ita_300a_2024.csv`, loaded on 2026-10-05. The file is OSHA's `ITA_300A_Summary_Data_2024_through_12-31-2025` (calendar year 2024). Same rules, same order, no threshold changed.
+
+| | Rows | % of rows checked | 2025, for comparison |
+|---|---:|---:|---:|
+| Raw rows | 398,620 | | 383,283 |
+| Malformed (D-001) | 0 | | 6 |
+| **Rows checked** | **398,620** | | **383,277** |
+| Hours worked ≤ 0 | 1,574 | 0.39% | 0.48% |
+| Average employees ≤ 0 | 196 | 0.05% | 0.73% |
+| Invalid NAICS code (D-008) | 203 | 0.05% | 0.01% |
+| Missing establishment type (D-007) | 555 | 0.14% | 0.11% |
+| Hours worked < 10,000 (D-003) | 44,341 | 11.12% | 12.42% |
+| Hours per employee > 8,760 (D-004) | 2,317 | 0.58% | 0.52% |
+| Hours per employee < 250 (D-004) | 2,976 | 0.75% | 0.36% |
+| Cases > average employees (D-008) | 26 | 0.01% | 0.01% |
+| **Total dropped** | **52,188** | **13.09%** | **14.64%** |
+| **Accepted** | **346,432** | **86.91%** | **85.36%** |
+
+Of the accepted plants, 322,520 are private, 14,023 state government and 9,889 local government. 22,681 retail rows were remapped to their 2022 NAICS code (D-006).
+
+What was checked before loading:
+
+- **Columns.** The 2024 file has the same 32 columns as 2025. Two of them (`change_reason`, `created_timestamp`) are in the opposite order, which doesn't matter because the loader reads columns by name.
+- **Duplicates.** 0 on `(establishment_id, year_filing_for)`, so the unique key holds (D-002). Every row has `year_filing_for` = 2024.
+- **NAICS editions.** `naics_year` is 2022 on 56% of rows, 2012 on 41% and 2017 on 3%. After the retail crosswalk, only 34 codes (58 plants) are not already in the 2025 catalog. The 203 rows with an invalid code are the same kind as in 2025 (padded subsectors such as 488100 and 811300, and codes with no real sector); all 203 carry `naics_year` = 0.
+- **The two rules that moved most.** Employees ≤ 0 fell from 0.73% to 0.05% and hours per employee < 250 rose from 0.36% to 0.75%. Both are small shares, and the total dropped is within two points of 2025.
+
+Plausibility, 2024 against 2025 (the industry rows are private plants):
+
+| | 2024 | 2025 |
+|---|---:|---:|
+| Pooled TRIR, all establishments | 3.61 | 3.45 |
+| Median TRIR, all establishments | 2.27 | 2.18 |
+| Share with zero cases | 37.0% | 37.3% |
+| 332710 Machine shops: plants, median | 1,458 · 2.07 | 1,222 · 2.19 |
+| 445110 Supermarkets: plants, median | 18,473 · 3.43 | 18,136 · 3.24 |
+| 493110 General warehousing: plants, median | 7,647 · 1.99 | 6,978 · 2.00 |
+| 623110 Nursing care facilities: plants, median | 8,223 · 4.68 | 8,117 · 4.18 |
+| 455110 Department stores: plants, median | 5,248 · 2.87 | 5,484 · 2.49 |
+
+The same sector leads both years (transportation and warehousing, 5.42 and 5.41) and the same industry tops the large-industry ranking (veterinary services). Cohort coverage (D-009) is also the same shape: 98.9% of private plants and 93.8% of government plants get a 6-digit cohort in 2024.
+
 ---
 
 ## D-001 · Malformed CSV rows
@@ -53,7 +98,7 @@ Of the accepted plants, 303,462 are private, 14,116 state government and 9,598 l
 
 **Decision:** one row per `(establishment_id, year)`, enforced by a unique constraint. `load_ita` replaces a whole year inside one transaction: delete that year's rows, insert the accepted ones, refresh `cohort_stats`.
 
-**Evidence:** the 2025 file has 0 duplicates on `(establishment_id, year_filing_for)`.
+**Evidence:** the 2025 and 2024 files each have 0 duplicates on `(establishment_id, year_filing_for)`.
 
 **Alternatives:** upsert with `ON CONFLICT DO UPDATE` (the original plan). Rejected, because upserting never removes a row. After tightening a rule, the rows it now drops would stay in the table from the previous run. Replacing the year keeps reloads idempotent *and* in sync with the current rules. The transaction means the API never sees a half-loaded year.
 
@@ -210,11 +255,26 @@ Government is 97% of sector 92 and 82% of sector 61 (education), so dropping it 
 | Code hash | HMAC-SHA256 keyed with `SECRET_KEY`, bound to the message id | A plain hash of a 6-digit code can be reversed by trying all million values. |
 - Sending email inside the request means a slow or failing SMTP provider makes the form slow or fail. Accepted for now; revisit if it happens.
 
+## D-011 · More than one year
+
+**Decision:** every year goes through the same rules and thresholds, one `load_ita` run per file. Each year has its own peers: the cohorts, the landing figures and the industry counts are computed per year, and nothing is pooled across years. The site opens on the newest loaded year.
+
+**Industry names:** `naics_reference` is one catalog shared by all years, so the label can't depend on which file was loaded last. The newest loaded year names the industries. Loading an older year only adds the codes the catalog doesn't have yet. Official titles from `core/naics.py` apply whichever year is loaded.
+
+**Evidence:** before this rule, loading 2024 after 2025 would have rewritten 287 of the 1,084 shared labels with 2024's most common description, for example 238990 from "All Other Specialty Trade Contractors" to "Crane rental with operator". 2024 also put two industries on the landing page that had no official title (449121 and 455219), so both were added to `OFFICIAL_TITLES`.
+
+**Alternatives:**
+- Last load wins (the original behaviour). Rejected: the same database content could show different names depending on the order of the commands.
+- A label per year. Rejected: the industry is the same in both years, and a name that changes when the user switches year reads as a different industry.
+
+**Not done:** the rules were not re-tuned on 2024. The thresholds come from the 2025 notebook, and the 2024 quality report above is close enough to 2025 that they were left alone.
+
 ---
 
 ## Known limitations
 
-- **One year of data (2025).** The model and command support more (`year` is a column), but only this file is loaded.
+- **Two years of data (2024 and 2025).** Earlier years can be added one file at a time, but OSHA's older files should be checked against the loader first.
+- **Years aren't the same set of plants.** A different number of establishments reports each year, and the files are snapshots taken at different points: the 2024 file collects submissions through 12-31-2025, a full year after the deadline, while OSHA's 2025 release runs through 03-15-2026. Part of the difference in plant counts between the two years is probably late 2025 submissions that hadn't arrived yet. A change in an industry's rate between years is not the same plants improving or worsening.
 - **Industry labels.** Sectors and the industries the landing page highlights use official NAICS 2022 titles (`backend/core/naics.py`). Every other code uses the description plants type most often, so a few are odd. Loading the full Census 2022 title file would fix this, and it goes with option A of D-006.
 - **Establishments that must report.** OSHA only requires electronic 300A submissions from some establishments (by size and industry), so the data isn't a random sample of all US workplaces.
 - **Self-reported data.** Undercounting injuries would make a plant look better than it is, and nothing in the file can detect that.

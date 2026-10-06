@@ -1,9 +1,9 @@
 # PlantLine (OSHA Industry Benchmark) — Technical Architecture
 
-**Version:** 0.4 (MVP built; contact form built, running on test keys)
+**Version:** 0.5 (MVP built; 2024 and 2025 loaded; contact form built, running on test keys)
 **Date:** October 2026
 **Author:** Jesús Martínez
-**Status:** Data, ingestion, API and frontend built. Contact form built; it still needs the real Turnstile keys and an SMTP provider before it can go live.
+**Status:** Data, ingestion, API and frontend built, with two report years loaded (2024 and 2025). Contact form built; it still needs the real Turnstile keys and an SMTP provider before it can go live. Next: the analysis notebook (Phase 5).
 
 ---
 
@@ -86,6 +86,7 @@ A Django management command, not a loose script. It lives inside the project and
 ```bash
 cd backend
 python manage.py load_ita --file ../data/raw/ita_300a_2025.csv            # load 2025
+python manage.py load_ita --file ../data/raw/ita_300a_2024.csv            # load 2024
 python manage.py load_ita --file ../data/raw/ita_300a_2025.csv --dry-run  # report only
 ```
 
@@ -96,14 +97,25 @@ Responsibilities:
 - Derive recordable cases, hours per employee and the 2022 NAICS code (D-006)
 - Apply the drop rules in a fixed order, labelling each dropped row with the first rule it fails
 - Print the quality report (rows accepted, dropped by reason, split by owner type)
-- Replace that year's rows in `establishment_summary` and upsert `naics_reference`, all in one transaction
+- Replace that year's rows in `establishment_summary` and update `naics_reference` (the newest loaded year names the industries, D-011), all in one transaction
 - Refresh the `cohort_stats` materialized view
 
-**Idempotency:** a unique constraint on `(establishment_id, year)`, and each run *replaces the whole year* instead of upserting (D-002). Upserting never deletes, so rows dropped by a newly tightened rule would stay behind. Replacing the year keeps the table identical to what the current rules accept, which is what makes iterating on cleaning rules safe. Loading 327k rows takes about 45 seconds.
+**Idempotency:** a unique constraint on `(establishment_id, year)`, and each run *replaces the whole year* instead of upserting (D-002). Upserting never deletes, so rows dropped by a newly tightened rule would stay behind. Replacing the year keeps the table identical to what the current rules accept, which is what makes iterating on cleaning rules safe. Loading a year (about 330k to 350k rows) takes about 45 seconds.
 
-**Quality report:** printed on every run; the 2025 numbers are in `docs/decisions.md`.
+**Quality report:** printed on every run; the 2025 and 2024 numbers are in `docs/decisions.md`.
 
-**More years:** one run per file (`data/raw/ita_300a_<year>.csv`). Only 2025 is loaded today. A newly loaded year shows up in the site's year selector with no frontend change (section 4.5). Older OSHA files may use different columns and must be checked against `ingest/cleaning.py` before loading.
+**More years:** one run per file (`data/raw/ita_300a_<year>.csv`). 2025 and 2024 are loaded. A newly loaded year shows up in the site's year selector with no frontend change (section 4.5), and loading it replaces only that year's rows (D-002), so the other years are not touched.
+
+**2024 (loaded 2026-10-05).** The year selector offers 2024, and the calculator, the landing findings and the industry search all use that year's peers. What was checked, with the numbers in `docs/decisions.md` (quality report for 2024, and D-011):
+- Columns: the same 32 as 2025; two are in a different order, which the loader ignores because it reads them by name. No loader change was needed for the columns.
+- NAICS editions: the retail crosswalk in `core/naics.py` (D-006) covers the file; only 34 codes (58 plants) were new to the catalog.
+- `load_ita --dry-run` first: 86.9% of rows accepted, against 85.4% for 2025.
+- After loading: `GET /api/years/` returns `[2025, 2024]`, and a calculation with `year=2024` reports 2024 peers (`cohort.year`, `cohort.establishment_count`).
+- A few industries compared across both years, to confirm the numbers are plausible.
+
+One thing did change in the loader: the NAICS catalog is shared by all years, so loading an older year no longer renames industries (D-011).
+
+**Earlier years:** OSHA publishes 2016 to 2023 as well. Their files use an older data dictionary, so compare the columns with `ingest/cleaning.py` (`TEXT_COLUMNS`, `COUNT_COLUMNS`, `CODE_COLUMNS`, and `year_filing_for`, which becomes the `year` column) and run `--dry-run` before loading any of them. Fix the loader, not the data, if they differ.
 
 ### 4.2 Data model
 
@@ -138,7 +150,7 @@ Constraint: unique `(establishment_id, year)`. Index: `(year, naics_code varchar
 | Field | Type |
 |---|---|
 | `code` | varchar(6) PK, 2022 code |
-| `label` | the official NAICS 2022 title where `core/naics.py` has one (sectors and the industries the landing page highlights); otherwise the most common description plants report for the code |
+| `label` | the official NAICS 2022 title where `core/naics.py` has one (sectors and the industries the landing page highlights); otherwise the most common description plants report for the code in the newest loaded year (D-011) |
 
 **`cohort_stats`** — materialized view (migration `core/0002`), one row per peer group
 
@@ -228,7 +240,7 @@ src/
 
 **State:** `useState` inside each page. One React Context holds the selected report year, because the header selector, the landing page and the calculator all need it. No Redux.
 
-**Year selector:** at the left of the navigation band. Its options come from `GET /api/years/`. Changing it reloads the landing figures and re-runs the last calculation against that year's peers.
+**Year selector:** at the left of the navigation band. Its options come from `GET /api/years/` (2025 and 2024 today), and the site opens on the newest. Changing it reloads the landing figures and re-runs the last calculation against that year's peers.
 
 **Charts:** built by hand, with no chart library. The bar, column and range charts are HTML and CSS; the `Histogram` is one SVG drawn at the measured width of its container, with a line at the user's TRIR and another at the peer median. Every chart has hover and keyboard tooltips and a table view with the same numbers.
 
@@ -323,7 +335,7 @@ Simple today, but every future extension already has a place to land:
 | CSV upload | new endpoint reusing the calculation logic | the form keeps working |
 | Explorer screen | new React route + paginated endpoint | the current screens are untouched |
 | Case Detail (300/301) | new table with FK to establishment | 300A data stays intact |
-| More years | same command with a different file; the year selector and `?year=` are already built | no code change |
+| More years | same command with a different file; the year selector and `?year=` are already built (2024 was added this way) | no frontend or API change |
 | Scheduled refresh | GitHub Action calling the management command | the command already exists |
 | Contact form | `contact/` app with its own table and endpoints | the benchmark core stays read-only |
 
@@ -450,6 +462,14 @@ Built ahead of the analysis notebook, which is still pending and still must not 
 - [ ] Real Turnstile keys (Cloudflare dashboard)
 - [ ] SMTP provider account, sender domain and recipient address
 - [ ] Retention rule for `contact_message` rows
+
+### Phase 8 — Historic years
+- [x] Download the 2024 Form 300A file to `data/raw/ita_300a_2024.csv`
+- [x] Check its columns and NAICS editions against the loader and the crosswalk
+- [x] `load_ita --dry-run`, then load; record the 2024 quality report in `decisions.md`
+- [x] Verify the year selector, landing findings and calculator on 2024
+- [x] Keep industry names stable when an older year is loaded (D-011)
+- [ ] Optional: earlier years, one file at a time
 
 ---
 
