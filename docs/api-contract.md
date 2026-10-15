@@ -178,7 +178,7 @@ Step 1 of the contact form (D-010): checks the captcha and the fields, stores th
 | Status | Body | When |
 |---|---|---|
 | `400` | `{ "email": ["…"], "message": ["…"] }` | Invalid fields |
-| `400` | `{ "captcha_token": ["…"] }` | The captcha token is missing, spent or rejected by Cloudflare |
+| `400` | `{ "captcha_token": ["…"] }` | The captcha token is missing, spent or rejected by Cloudflare. The frontend shows it as `400 · Security check failed` |
 | `429` | `{ "detail": "Request was throttled. …" }` | Too many messages from this IP |
 | `503` | `{ "detail": "We couldn't send the email right now. …" }` | The code email couldn't be sent; the pending message is removed |
 

@@ -23,6 +23,7 @@ export default function Contact() {
   const { status, error: yearError, retry } = useYear()
   const [error, setError] = useState(null)
 
+  // `err` is an ApiError (has a status) or a ready-made { code, title, message } from the captcha
   const handleError = (err) => {
     setError(err)
     // The status is shown at the top of the page; bring it into view
@@ -32,7 +33,11 @@ export default function Contact() {
   return (
     <>
       {error ? (
-        <PageAlert error={error} message={contactMessage(error)} />
+        error.status !== undefined ? (
+          <PageAlert error={error} message={contactMessage(error)} />
+        ) : (
+          <PageAlert code={error.code} title={error.title} message={error.message} />
+        )
       ) : (
         status === 'error' && <PageAlert error={yearError} onRetry={retry} />
       )}

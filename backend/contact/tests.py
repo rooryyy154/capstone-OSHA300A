@@ -9,8 +9,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import ContactMessage
-from .rules import MAX_ATTEMPTS
-from .services import hash_code, new_code
+from .rules import MAX_ATTEMPTS, UNVERIFIED_RETENTION, VERIFIED_RETENTION
+from .services import hash_code, new_code, purge_old_messages
 from .views import ContactRateThrottle
 
 VISITOR = 'visitor@example.com'
@@ -149,6 +149,43 @@ class ContactFlowTests(TestCase):
                 response = self.send()
         self.assertEqual(response.status_code, 503)
         self.assertEqual(ContactMessage.objects.count(), 0)
+
+
+class RetentionTests(TestCase):
+    def make(self, status, created_days_ago, expires_days_ago):
+        now = timezone.now()
+        message = ContactMessage.objects.create(
+            email=VISITOR,
+            message='Hi',
+            code_hash='x',
+            status=status,
+            expires_at=now - timedelta(days=expires_days_ago),
+        )
+        # created_at is auto_now_add, so it is backdated after creation
+        ContactMessage.objects.filter(id=message.id).update(created_at=now - timedelta(days=created_days_ago))
+        return message.id
+
+    def test_old_messages_are_deleted_and_recent_ones_kept(self):
+        unverified = UNVERIFIED_RETENTION.days
+        verified = VERIFIED_RETENTION.days
+        old_pending = self.make('pending', unverified + 2, unverified + 1)
+        old_expired = self.make('expired', unverified + 2, unverified + 1)
+        old_verified = self.make('verified', verified + 1, verified + 1)
+        fresh_pending = self.make('pending', 0, -1)
+        recent_verified = self.make('verified', verified - 1, verified - 1)
+
+        self.assertEqual(purge_old_messages(), 3)
+        remaining = set(ContactMessage.objects.values_list('id', flat=True))
+        self.assertEqual(remaining, {fresh_pending, recent_verified})
+        self.assertFalse({old_pending, old_expired, old_verified} & remaining)
+
+    @override_settings(CONTACT_RECIPIENT_EMAIL=OWNER)
+    def test_a_new_submission_purges_old_messages(self):
+        cache.clear()
+        stale = self.make('expired', 10, 9)
+        with captcha():
+            APIClient().post('/api/contact/', {'email': VISITOR, 'message': 'Hello', 'captcha_token': 't'}, format='json')
+        self.assertFalse(ContactMessage.objects.filter(id=stale).exists())
 
 
 class CodeTests(TestCase):

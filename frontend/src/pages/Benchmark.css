@@ -419,3 +419,33 @@
   font-size: 14px;
   color: var(--gray-600);
 }
+
+/* ---------- PDF export ---------- */
+
+.export {
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid var(--gray-200);
+}
+
+.export h3 {
+  font-size: 1.15rem;
+  margin-bottom: 6px;
+}
+
+.export__lead {
+  color: var(--gray-700);
+  font-size: 15px;
+}
+
+.export__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+}
+
+.export__field {
+  flex: 1 1 260px;
+  margin-bottom: 0;
+}

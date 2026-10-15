@@ -1,100 +1,31 @@
-import { formatInt, formatPercent, formatRate } from '../../lib/format.js'
+import { formatInt, formatRate } from '../../lib/format.js'
+import { VERDICT_LABELS, differenceText, footnoteText, headlineText, significanceText } from '../../lib/resultText.js'
 import Histogram from '../charts/Histogram.jsx'
 import PercentileMeter from './PercentileMeter.jsx'
 
-const VERDICTS = {
-  low: { label: 'Lower than most peers', className: 'is-low', icon: 'M5 8l5 5 5-5' },
-  typical: { label: 'Typical for your industry', className: 'is-typical', icon: 'M4 10h12' },
-  high: { label: 'Higher than most peers', className: 'is-high', icon: 'M5 12l5-5 5 5' },
-  very_high: { label: 'Among the highest', className: 'is-very-high', icon: 'M5 12l5-5 5 5M5 17l5-5 5 5' },
+const VERDICT_STYLES = {
+  low: { className: 'is-low', icon: 'M5 8l5 5 5-5' },
+  typical: { className: 'is-typical', icon: 'M4 10h12' },
+  high: { className: 'is-high', icon: 'M5 12l5-5 5 5' },
+  very_high: { className: 'is-very-high', icon: 'M5 12l5-5 5 5M5 17l5-5 5 5' },
 }
 
-const OWNER_WORDS = { private: 'private', government: 'government', all: '' }
-
 function VerdictBadge({ verdict }) {
-  const { label, className, icon } = VERDICTS[verdict]
+  const { className, icon } = VERDICT_STYLES[verdict]
   return (
     <span className={`verdict ${className}`}>
       <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
         <path d={icon} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      {label}
+      {VERDICT_LABELS[verdict]}
     </span>
   )
 }
 
-function peerDescription(result) {
-  const { cohort, industry } = result
-  const owner = OWNER_WORDS[cohort.ownership]
-  const establishments = `${owner ? `${owner} ` : ''}establishments`
-  if (cohort.level === 6 && industry.label) return `${establishments} in ${industry.label} (NAICS ${cohort.naics_prefix})`
-  return `${establishments} in NAICS ${cohort.naics_prefix}`
-}
-
-function Headline({ result }) {
-  const { plant, rank, cohort } = result
-  const peers = peerDescription(result)
-  const tiedShare = rank.tied / cohort.establishment_count
-  if (plant.trir === 0 && tiedShare >= 0.1) {
-    return (
-      <p className="result__sentence">
-        You're tied with {formatPercent(tiedShare)} of {peers} at zero recordable cases.
-      </p>
-    )
-  }
-  const belowShare = rank.below / cohort.establishment_count
-  return (
-    <p className="result__sentence">
-      Your TRIR is higher than {formatPercent(belowShare)} of {peers}
-      {tiedShare >= 0.01 ? `, and tied with ${formatPercent(tiedShare)}` : ''}.
-    </p>
-  )
-}
-
-function Significance({ result }) {
-  const { plant, comparison, cohort, input } = result
-  const { low, high } = plant.trir_interval
-  const cases = input.total_recordable_cases
-  if (comparison.differs_from_median === 'above') {
-    return (
-      <p>
-        Even at the low end of its 95% range ({formatRate(low)}), your TRIR is above the peer median of{' '}
-        {formatRate(cohort.median)}. A gap this size is unlikely to be chance.
-      </p>
-    )
-  }
-  if (comparison.differs_from_median === 'below') {
-    return (
-      <p>
-        Even at the high end of its 95% range ({formatRate(high)}), your TRIR is below the peer median of{' '}
-        {formatRate(cohort.median)}. That's unlikely to be luck alone.
-      </p>
-    )
-  }
-  if (cases === 0) {
-    return (
-      <p>
-        With no recordable cases this year, your true rate could still reasonably be as high as {formatRate(high)}. A zero is
-        good news, but one year of it doesn't prove your plant is safer than its peers. Several years of data would tell you
-        more.
-      </p>
-    )
-  }
-  if (plant.trir === cohort.median) {
-    return <p>Your TRIR matches the peer median exactly.</p>
-  }
-  return (
-    <p>
-      With {formatInt(cases)} recordable {cases === 1 ? 'case' : 'cases'}, your true rate could reasonably be anywhere from{' '}
-      {formatRate(low)} to {formatRate(high)}. That range includes the peer median ({formatRate(cohort.median)}), so this
-      year's difference could be chance. Several years of data would tell you more.
-    </p>
-  )
-}
-
+// The sentences live in lib/resultText.js, shared with the PDF report
 export default function ResultPanel({ result }) {
   const { plant, cohort, rank, comparison, histogram, warnings, input } = result
-  const difference = comparison?.difference_from_median
+  const difference = comparison && differenceText(comparison)
 
   return (
     <section className="result" aria-labelledby="result-title">
@@ -125,7 +56,7 @@ export default function ResultPanel({ result }) {
 
       {cohort && (
         <>
-          <Headline result={result} />
+          <p className="result__sentence">{headlineText(result)}</p>
           <PercentileMeter percentile={rank.percentile} />
 
           <dl className="result__stats">
@@ -136,13 +67,8 @@ export default function ResultPanel({ result }) {
             <div>
               <dt>Your difference</dt>
               <dd>
-                {difference > 0 ? '+' : ''}
-                {formatRate(difference)}
-                {comparison.percent_from_median != null && (
-                  <span className="result__stat-note">
-                    {Math.abs(comparison.percent_from_median).toFixed(0)}% {difference >= 0 ? 'above' : 'below'}
-                  </span>
-                )}
+                {difference.value}
+                {difference.note && <span className="result__stat-note">{difference.note}</span>}
               </dd>
             </div>
             <div>
@@ -170,14 +96,10 @@ export default function ResultPanel({ result }) {
 
           <div className="result__note">
             <h3>Is the difference real?</h3>
-            <Significance result={result} />
+            <p>{significanceText(result)}</p>
           </div>
 
-          <p className="result__footer">
-            Compared with {formatInt(cohort.establishment_count)} {peerDescription(result)}, {cohort.year} data.{' '}
-            {formatPercent(cohort.share_zero)} of them recorded zero cases. Your percentile counts half of the plants tied with
-            you ({formatInt(rank.tied)}).
-          </p>
+          <p className="result__footer">{footnoteText(result)}</p>
         </>
       )}
     </section>

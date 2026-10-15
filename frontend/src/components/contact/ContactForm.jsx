@@ -1,6 +1,7 @@
 import { Turnstile } from '@marsidev/react-turnstile'
 import { useRef, useState } from 'react'
 import { postContact, postContactVerify } from '../../api/client.js'
+import { CAPTCHA_REJECTED, describeCaptchaError } from '../../lib/captcha.js'
 import Loader from '../states/Loader.jsx'
 
 // Cloudflare's public dummy site key: the widget always passes and its token only works with
@@ -21,7 +22,8 @@ const first = (value) => [].concat(value)[0]
  *   'form'  email + message + captcha  →  POST /api/contact/         (emails a 6-digit code)
  *   'code'  the code from the email    →  POST /api/contact/verify/  (delivers the message)
  *   'done'  confirmation
- * Field errors are shown next to the field; anything else goes to `onError` for the page-level status.
+ * Field errors are shown next to the field. Anything else, including a failed robot check, goes to
+ * `onError` for the numbered page-level status: an ApiError, or a { code, title, message } object.
  */
 export default function ContactForm({ onError }) {
   const [step, setStep] = useState('form')
@@ -72,11 +74,12 @@ export default function ContactForm({ onError }) {
     } catch (err) {
       resetCaptcha()
       const fields = err.status === 400 && err.data && !err.data.detail ? err.data : null
-      if (fields) {
+      if (fields?.captcha_token) {
+        onError(CAPTCHA_REJECTED)
+      } else if (fields) {
         setErrors({
           email: fields.email && first(fields.email),
           message: fields.message && first(fields.message),
-          captcha: fields.captcha_token && first(fields.captcha_token),
         })
       } else {
         onError(err)
@@ -143,6 +146,7 @@ export default function ContactForm({ onError }) {
           We sent a {CODE_LENGTH}-digit code to <strong>{pending.email}</strong>. Enter it below to send your message. The
           code expires in {pending.expires_in_minutes} minutes.
         </p>
+        <p>If it isn't in your inbox within a minute, check your spam folder.</p>
         <div className="field">
           <label htmlFor="contact-code">Verification code</label>
           <input
@@ -244,13 +248,19 @@ export default function ContactForm({ onError }) {
           <Turnstile
             ref={turnstile}
             siteKey={SITE_KEY}
-            options={{ theme: 'light', size: 'flexible' }}
+            // English like the rest of the site, instead of the visitor's browser language
+            options={{ theme: 'light', size: 'flexible', language: 'en' }}
             onSuccess={(value) => {
               setToken(value)
               setErrors((current) => ({ ...current, captcha: undefined }))
+              onError(null)
             }}
             onExpire={() => setToken('')}
-            onError={() => setToken('')}
+            onError={(errorCode) => {
+              setToken('')
+              onError(describeCaptchaError(errorCode))
+              return true // tells Turnstile the error was handled
+            }}
           />
         ) : (
           <p className="field__error">The contact form isn't set up yet: its captcha key is missing.</p>

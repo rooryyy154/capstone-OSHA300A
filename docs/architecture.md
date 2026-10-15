@@ -1,9 +1,9 @@
 # PlantLine (OSHA Industry Benchmark) — Technical Architecture
 
-**Version:** 0.5 (MVP built; 2024 and 2025 loaded; contact form built, running on test keys)
+**Version:** 0.7 (MVP built; 2024 and 2025 loaded; contact form configured; PDF export built)
 **Date:** October 2026
 **Author:** Jesús Martínez
-**Status:** Data, ingestion, API and frontend built, with two report years loaded (2024 and 2025). Contact form built; it still needs the real Turnstile keys and an SMTP provider before it can go live. Next: the analysis notebook (Phase 5).
+**Status:** Data, ingestion, API and frontend built, with two report years loaded (2024 and 2025). Contact form built and configured locally: real Turnstile keys and Brevo SMTP are in the `.env` files, and a test email was delivered. Still pending: a full browser test with real inboxes, and the Railway hostname on the Turnstile widget when deploying. Results can be exported as a one-page PDF built in the browser (D-012). Next: the analysis notebook (Phase 5).
 
 ---
 
@@ -65,7 +65,7 @@ The benchmark core is a read-only system. Data enters once through a manual, del
 │  Cloudflare Turnstile  │  │              localhost:5173  │
 │    siteverify          │  │                              │
 │  SMTP provider         │  │  Landing    findings, charts │
-│    Resend or Brevo     │  │  Benchmark  form → results   │
+│    Brevo (free plan)   │  │  Benchmark  form → results   │
 └────────────────────────┘  │  Contact    form → code      │
                             │             Turnstile widget │
                             └──────────────────────────────┘
@@ -226,10 +226,15 @@ src/
 │   ├── year.jsx, useYear.js  the selected report year (React Context)
 │   ├── hooks.js              useApi, useTooltip, useElementWidth, useDebounced
 │   ├── errors.js             API failure → status code, title, message
+│   ├── captcha.js            Turnstile error code → status code, title, message
+│   ├── histogramLayout.js    histogram geometry, shared by the page chart and the PDF
+│   ├── resultText.js         the sentences that explain a result, shared by the page and the PDF
+│   ├── exportReport.js       builds and downloads the PDF (loaded only on click)
 │   └── format.js             number formatting
 ├── components/
 │   ├── layout/               SiteHeader (navigation + year selector), SiteFooter, PageHeader
-│   ├── benchmark/            BenchmarkForm, IndustryPicker, ResultPanel, PercentileMeter
+│   ├── benchmark/            BenchmarkForm, IndustryPicker, ResultPanel, PercentileMeter, ExportReport
+│   ├── report/               ReportDocument (the PDF template)
 │   ├── charts/               Histogram, HBarChart, ColumnChart, RangeStrip, Tooltip, DataTable
 │   ├── states/               Loader, StatusMessage, PageAlert
 │   └── contact/              ContactForm
@@ -248,15 +253,17 @@ src/
 
 **Styling:** custom CSS with design tokens in `index.css` (greens, grays and white; Merriweather for headings and Source Sans 3 for text). No CSS framework.
 
-**Contact:** `ContactForm.jsx` with three internal steps (the form, code entry, confirmation), managed with `useState`, inside the Contact page. `api/client.js` has `postContact` and `postContactVerify`. Field errors appear next to the field; other failures use the same status screen as the rest of the site. Details in 4.6.
+**PDF export (D-012):** under the results, "Export your report" takes an optional plant name and downloads a one-page PDF built in the browser with `@react-pdf/renderer`, loaded only on click. The PDF reuses the page's histogram geometry (`lib/histogramLayout.js`) and sentences (`lib/resultText.js`), so it matches the screen. No server call, no captcha, and the plant name never leaves the browser.
+
+**Contact:** `ContactForm.jsx` with three internal steps (the form, code entry, confirmation), managed with `useState`, inside the Contact page. `api/client.js` has `postContact` and `postContactVerify`. Field errors appear next to the field; other failures, including a failed robot check, use the same numbered status screen as the rest of the site. Details in 4.6.
 
 ### 4.6 Contact
 
 **Goal:** a visitor can send me a message (email + message body), after proving their email is real and that they are not a bot.
 
-This layer is an extension, not part of the MVP, and it must not delay the analysis notebook. It is built and tested, and runs on Cloudflare's test keys with emails printed in the Django terminal until the real keys and an SMTP provider are configured.
+This layer is an extension, not part of the MVP, and it must not delay the analysis notebook. It is built and tested. Locally it now runs with the real Turnstile keys (widget hostname `localhost`) and Brevo SMTP, and `sendtestemail` delivered to a real inbox (2026-10-14). Without those `.env` values it falls back to Cloudflare's test keys and prints emails in the Django terminal.
 
-Code: `backend/contact/` (`models.py`, `rules.py`, `turnstile.py`, `services.py`, `views.py`, 14 tests) and `frontend/src/components/contact/ContactForm.jsx`.
+Code: `backend/contact/` (`models.py`, `rules.py`, `turnstile.py`, `services.py`, `views.py`, the `purge_contact_messages` command, 16 tests) and `frontend/src/components/contact/ContactForm.jsx`.
 
 **Flow**
 
@@ -268,13 +275,17 @@ Code: `backend/contact/` (`models.py`, `rules.py`, `turnstile.py`, `services.py`
 **Stack**
 
 - **Captcha:** Cloudflare Turnstile. The frontend uses `@marsidev/react-turnstile`; the backend validates the token with a POST to Cloudflare's `siteverify` endpoint. The frontend alone is never trusted.
-- **Email:** Django `send_mail` (and `EmailMessage`, which is needed to set `Reply-To`) with a transactional provider over SMTP (Resend or Brevo, free tier; choice TBD). Without `EMAIL_HOST`, `config/settings.py` uses Django's console email backend, so in development the emails are printed in the terminal.
-  - `From` is my own domain or the provider's domain, never the visitor's address.
+  - The widget is forced to English (`language: 'en'`); by default it follows the visitor's browser language, which showed Spanish text on an English site.
+  - A failed check is shown as a numbered status at the top of the page, like every other error: the widget's own Cloudflare error code (for example `110200` domain not authorized, `110600` timed out, `200500` couldn't load; mapping in `frontend/src/lib/captcha.js`), or `400 · Security check failed` when our server rejects the token.
+- **Email:** Django `send_mail` (and `EmailMessage`, which is needed to set `Reply-To`) over SMTP with Brevo's free plan (`smtp-relay.brevo.com`, port 587). Without `EMAIL_HOST`, `config/settings.py` uses Django's console email backend, so in development the emails are printed in the terminal. `python manage.py sendtestemail <address>` checks the SMTP settings without the form.
+  - The project has no domain, so `From` is my own email address, verified as a sender in Brevo. It is never the visitor's address.
   - The visitor's email goes in `Reply-To`.
+  - Without a domain, these emails are more likely to land in spam; the code step tells visitors to check their spam folder.
 - **Verification:** a 6-digit code, not a link, entered in the same React component as a second step. A link would need its own verification route and a token in the URL; the code keeps the whole flow inside one component.
 - **Code storage:** the code is hashed with a key (`SECRET_KEY`) and bound to its message id. A 6-digit code has only a million possibilities, so a plain hash could be reversed by anyone who read the table.
 - **Anti-abuse:** a hidden honeypot field (a filled one gets the same answer as a real submission, and nothing is stored or sent), plus DRF throttling with its own scopes: 5 messages per hour per IP (30 in development) and 30 code checks per hour.
 - Email is sent synchronously inside the request. No Celery.
+- **Retention:** pending and expired messages are deleted 1 day after their code expires, verified ones after 30 days. The cleanup runs on every new submission, and `python manage.py purge_contact_messages` runs it by hand.
 
 **Data model:** new table `contact_message`, in a new `contact/` Django app.
 
@@ -295,7 +306,8 @@ Code: `backend/contact/` (`models.py`, `rules.py`, `turnstile.py`, `services.py`
 |---|---|---|
 | Invalid fields | both | `400` with field errors, like the benchmark form |
 | Throttled | both | `429`, DRF's standard throttle response |
-| Invalid captcha | `/contact/` | `400` with a `captcha_token` error; nothing is stored or sent |
+| Invalid captcha | `/contact/` | `400` with a `captcha_token` error; nothing is stored or sent. The page shows `400 · Security check failed` |
+| Captcha widget error | browser only | Cloudflare's client error code (e.g. `110200`), shown as the status number; no request is sent |
 | Wrong code | `/contact/verify/` | `400` with a `code` error saying how many tries are left; counts toward `attempts` |
 | Expired code | `/contact/verify/` | `410`, `error: "expired"` |
 | Too many attempts | `/contact/verify/` | `410`, `error: "too_many_attempts"`; the message can no longer be verified |
@@ -310,15 +322,10 @@ Code: `backend/contact/` (`models.py`, `rules.py`, `turnstile.py`, `services.py`
 | `VITE_TURNSTILE_SITE_KEY` | `frontend/.env` | the widget's public key |
 | `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | `backend/.env` | SMTP provider |
 | `EMAIL_PORT` | `backend/.env` | SMTP port, default 587 (TLS) |
-| `DEFAULT_FROM_EMAIL` | `backend/.env` | the sender address, on a domain the provider has verified |
+| `DEFAULT_FROM_EMAIL` | `backend/.env` | the sender address, verified in Brevo (e.g. `PlantLine <me@gmail.com>`) |
 | `CONTACT_RECIPIENT_EMAIL` | `backend/.env` | where verified messages are forwarded |
 
-**Still to decide (TBD)**
-
-- Provider: Resend or Brevo, and with it the real `From` address
-- How long `contact_message` rows are kept. This is the first table that holds personal data (visitors' email addresses), so it needs a retention rule; today nothing deletes them
-
-The values chosen for the other open points (expiry, lengths, rates, status codes) are recorded in `docs/decisions.md`, D-010.
+The values chosen for the open points (provider, expiry, lengths, rates, status codes, retention) are recorded in `docs/decisions.md`, D-010.
 
 With both Turnstile keys empty in development, the app uses Cloudflare's published test keys: the widget always passes and the test secret accepts any token. Outside `DEBUG`, a missing secret key makes every message fail the captcha check.
 
@@ -366,9 +373,9 @@ OSHA-capstone/
 │   ├── package.json
 │   └── src/
 │       ├── api/              client.js
-│       ├── lib/              year context, hooks, errors, format
+│       ├── lib/              year context, hooks, errors, captcha, histogram layout, result text, PDF export, format
 │       ├── components/
-│       │   ├── layout/  benchmark/  charts/  states/
+│       │   ├── layout/  benchmark/  charts/  states/  report/
 │       │   └── contact/ContactForm.jsx
 │       └── pages/            Landing, Benchmark, Contact, Credits, NotFound
 ├── analysis/
@@ -459,9 +466,11 @@ Built ahead of the analysis notebook, which is still pending and still must not 
 - [x] Throttle scope and honeypot field
 - [x] Frontend two-step form (`ContactForm.jsx`)
 - [x] Error states for all six error cases
-- [ ] Real Turnstile keys (Cloudflare dashboard)
-- [ ] SMTP provider account, sender domain and recipient address
-- [ ] Retention rule for `contact_message` rows
+- [x] Retention rule for `contact_message` rows
+- [x] Provider chosen: Brevo (no domain needed)
+- [x] Real Turnstile keys in the `.env` files (widget allows `localhost`; add the Railway hostname when deploying)
+- [x] Brevo account, verified sender and SMTP key in `backend/.env` (test email delivered)
+- [ ] End-to-end test with real inboxes
 
 ### Phase 8 — Historic years
 - [x] Download the 2024 Form 300A file to `data/raw/ita_300a_2024.csv`
@@ -470,6 +479,13 @@ Built ahead of the analysis notebook, which is still pending and still must not 
 - [x] Verify the year selector, landing findings and calculator on 2024
 - [x] Keep industry names stable when an older year is loaded (D-011)
 - [ ] Optional: earlier years, one file at a time
+
+### Phase 9 — PDF export (post-MVP)
+- [x] Move PDF export out of the out-of-scope list and record the decision (D-012)
+- [x] Share the histogram geometry and result sentences between the page and the PDF
+- [x] One-page PDF template (`ReportDocument.jsx`) and the "Export your report" section
+- [x] Optional plant name, written only into the PDF
+- [x] Checked: typical result, fallback cohort, no peer group, accented plant names, the real download button
 
 ---
 
@@ -489,7 +505,7 @@ Built ahead of the analysis notebook, which is still pending and still must not 
 
 ## 9. Out of scope
 
-User accounts, CSV upload, explorer screen, Case Detail data, NLP on incident narratives, PDF export, automated orchestration, BLS SOII comparison.
+User accounts, CSV upload, explorer screen, Case Detail data, NLP on incident narratives, automated orchestration, BLS SOII comparison. (PDF export was on this list until v0.7; it was moved in, see D-012.)
 
 All of it is accounted for in the design and has a place to land, but none of it gets built in this version.
 

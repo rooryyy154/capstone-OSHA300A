@@ -62,6 +62,7 @@ def contact(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    services.purge_old_messages()
     message, code = services.create_pending(data['email'], data['message'])
     try:
         services.send_code(message, code)

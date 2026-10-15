@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { postBenchmark } from '../api/client.js'
 import BenchmarkForm from '../components/benchmark/BenchmarkForm.jsx'
+import ExportReport from '../components/benchmark/ExportReport.jsx'
 import ResultPanel from '../components/benchmark/ResultPanel.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import Loader from '../components/states/Loader.jsx'
@@ -87,6 +88,7 @@ export default function Benchmark() {
         <div className={loading ? 'is-refreshing' : undefined} aria-live="polite" aria-busy={loading}>
           <ResultPanel result={result} />
         </div>
+        <ExportReport result={result} disabled={loading} />
       </div>
     )
   } else {

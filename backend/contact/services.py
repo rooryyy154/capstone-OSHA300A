@@ -4,11 +4,12 @@ import secrets
 
 from django.conf import settings
 from django.core.mail import EmailMessage, send_mail
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare, salted_hmac
 
 from .models import ContactMessage
-from .rules import CODE_LENGTH, CODE_TTL
+from .rules import CODE_LENGTH, CODE_TTL, UNVERIFIED_RETENTION, VERIFIED_RETENTION
 
 
 def new_code():
@@ -36,6 +37,23 @@ def create_pending(email, text):
     message.code_hash = hash_code(message.id, code)
     message.save()
     return message, code
+
+
+def purge_old_messages():
+    """Delete messages past their retention period (D-010). Returns how many were deleted.
+
+    Runs on every new submission, so the table stays small without a scheduled job.
+    """
+    now = timezone.now()
+    stale = ContactMessage.objects.filter(
+        Q(status=ContactMessage.Status.VERIFIED, created_at__lt=now - VERIFIED_RETENTION)
+        | Q(
+            status__in=[ContactMessage.Status.PENDING, ContactMessage.Status.EXPIRED],
+            expires_at__lt=now - UNVERIFIED_RETENTION,
+        )
+    )
+    deleted, _ = stale.delete()
+    return deleted
 
 
 def send_code(message, code):

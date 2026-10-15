@@ -15,8 +15,9 @@ The thresholds live in one place in code, `backend/core/rules.py`, and are used 
 | D-007 | Government establishments | Decided | Keep them; the user picks the peer group (private by default) |
 | D-008 | Other inconsistent rows | Decided | Drop invalid NAICS and cases > employees; keep the rest |
 | D-009 | Minimum cohort size | Decided | 30 plants; fall back 6 → 4 → 3 NAICS digits |
-| D-010 | Contact form (post-MVP) | Built; keys and provider pending | Turnstile captcha, 6-digit email code, synchronous email; isolated `contact/` app |
+| D-010 | Contact form (post-MVP) | Built and configured (Turnstile + Brevo) | Turnstile captcha, 6-digit email code, synchronous email; isolated `contact/` app |
 | D-011 | More than one year | Decided | Same rules for every year; the newest loaded year names the industries |
+| D-012 | PDF export of a result | Built | One-page PDF generated in the browser; optional plant name never leaves the browser; no captcha |
 
 D-001 to D-009 and D-011 are data decisions. D-010 is a product decision, recorded here because it changes the "read-only system" rule.
 
@@ -216,13 +217,14 @@ Government is 97% of sector 92 and 82% of sector 61 (education), so dropping it 
 
 ## D-010 · Contact form with email verification (post-MVP)
 
-**Status:** built and tested. It runs on Cloudflare's test keys, with emails printed in the Django terminal, until the real Turnstile keys and an SMTP provider are configured. It must not delay the analysis notebook.
+**Status:** built, tested and configured locally. On 2026-10-14 the real Turnstile keys (widget hostname `localhost`) and the Brevo SMTP credentials were added to the `.env` files, and a test email was delivered to a real inbox. Still pending: a full browser test with real inboxes, and adding the Railway hostname to the widget when deploying. It must not delay the analysis notebook.
 
 **Decision:** the Comments page becomes a Contact page where a visitor sends me a message (email + message body) after proving they aren't a bot and that their email is real. The design is in `docs/architecture.md`, section 4.6. In short:
 
 - **Captcha:** Cloudflare Turnstile, with the token validated on the server against Cloudflare's `siteverify`. The frontend alone is never trusted.
 - **Email verification:** a 6-digit code emailed to the visitor and entered as a second step in the same React component. Only a keyed hash of the code is stored, with a 15-minute expiry and a limit of 5 wrong attempts.
-- **Email sending:** Django `send_mail` over SMTP with a transactional provider (Resend or Brevo, TBD), sent synchronously inside the request. `From` is my own or the provider's domain; the visitor's address goes in `Reply-To`.
+- **Email sending:** Django `send_mail` over SMTP with Brevo's free plan, sent synchronously inside the request. The project has no domain of its own, so `From` is my own email address, verified as a sender in Brevo; the visitor's address goes in `Reply-To`.
+- **Retention:** pending and expired messages are deleted 1 day after their code expires; verified messages 30 days after they were sent, since by then they're already in my inbox. The cleanup runs on every new submission (no scheduled job), and `python manage.py purge_contact_messages` runs it by hand.
 - **Anti-abuse:** a hidden honeypot field and dedicated DRF throttle scopes: 5 messages per hour per IP, and 30 code checks per hour.
 - **Isolation:** a new `contact/` Django app with one table, `contact_message`. The benchmark apps (`core/`, `ingest/`, `api/`) stay read-only.
 
@@ -230,16 +232,19 @@ Government is 97% of sector 92 and 82% of sector 61 (education), so dropping it 
 
 | Choice | Alternative | Why not |
 |---|---|---|
-| Turnstile | reCAPTCHA, hCaptcha | Reasons to be written when this is built. |
+| Turnstile | reCAPTCHA, hCaptcha | *Draft, to confirm:* Turnstile is free, usually verifies without a puzzle, and doesn't send visitors' browsing data to an ad company. reCAPTCHA is Google's and shows image puzzles more often (v2); hCaptcha's free plan also relies more on puzzles. |
 | 6-digit code | Verification link | A link needs its own verification route and a token in the URL. The code keeps the whole flow inside one component. |
 | Synchronous email | Celery (background queue) | A worker and a message broker are a lot of infrastructure for a form that sends a handful of emails. |
-| Own endpoint + table | Formspree, Web3Forms | Reasons to be written when this is built. |
+| Own endpoint + table | Formspree, Web3Forms | *Draft, to confirm:* a hosted form service would keep visitors' messages on a third party's servers, limit the free plan, and skip the backend work this capstone is meant to show. With my own endpoint I control validation, rate limits and retention. |
+| Brevo | Resend | Resend can only email my own address until a domain is verified, so visitors would never get their code. Brevo can send from a verified personal address, with no domain needed. |
 
 **Consequences:**
 
 - The system is no longer purely read-only. The exception is one isolated write path: a mailbox, with no accounts and no session state.
 - The cut line in `architecture.md` was reworded: "no user state" now means no accounts and no saved user data; the contact mailbox is allowed.
-- `contact_message` is the first table with personal data (visitors' email addresses). How long rows are kept is TBD; today nothing deletes them.
+- `contact_message` is the first table with personal data (visitors' email addresses), so it has a retention rule (above).
+- Sending email inside the request means a slow or failing SMTP provider makes the form slow or fail. Accepted for now; revisit if it happens.
+- Without a domain, emails sent from a personal address through Brevo are more likely to land in spam. The code step tells visitors to check their spam folder. Getting a domain later means switching `DEFAULT_FROM_EMAIL` and adding the DNS records Brevo asks for; no code change.
 
 **Values chosen while building** (all in `backend/contact/rules.py` or `config/settings.py`, easy to change):
 
@@ -253,7 +258,9 @@ Government is 97% of sector 92 and 82% of sector 61 (education), so dropping it 
 | Filled honeypot | Same `201` answer as a real submission; nothing stored or sent | A bot that sees an error would learn to leave the field empty. |
 | Status codes | `400` bad captcha or wrong code, `410` expired or too many attempts, `404` unknown id, `503` email failure | `410` says "this code is gone, start again", which is what the form does. |
 | Code hash | HMAC-SHA256 keyed with `SECRET_KEY`, bound to the message id | A plain hash of a 6-digit code can be reversed by trying all million values. |
-- Sending email inside the request means a slow or failing SMTP provider makes the form slow or fail. Accepted for now; revisit if it happens.
+| Retention | Unverified: 1 day after expiry. Verified: 30 days | Unverified messages are useless once the code expires; verified ones already reached my inbox. |
+| Captcha language | Forced to English | By default the widget follows the browser language and showed Spanish on an English site. |
+| Captcha errors | A numbered status at the top of the page: Cloudflare's error code (e.g. `110200`) or `400` for a token our server rejects | Consistent with the site's other error states, and the code points straight to the cause in Cloudflare's documentation. |
 
 ## D-011 · More than one year
 
@@ -268,6 +275,37 @@ Government is 97% of sector 92 and 82% of sector 61 (education), so dropping it 
 - A label per year. Rejected: the industry is the same in both years, and a name that changes when the user switches year reads as a different industry.
 
 **Not done:** the rules were not re-tuned on 2024. The thresholds come from the 2025 notebook, and the 2024 quality report above is close enough to 2025 that they were left alone.
+
+## D-012 · PDF export of a result
+
+**Status:** built (2026-10-14). PDF export was on the out-of-scope list in `architecture.md`; it was moved in because an EHS manager rarely uses the number alone. They take it to a manager, a safety meeting or an audit, and a one-page file with the plant's name is something they can attach.
+
+**Decision:** under the results there is an "Export your report" section with an optional plant name and a "Download PDF" button. The PDF is generated **in the browser** with `@react-pdf/renderer` from the API response the page already has. It shows:
+- the plant name, the inputs and the peer group;
+- the TRIR with its 95% range and the verdict;
+- the percentile, the peer statistics and the histogram;
+- "Is the difference real?";
+- a source and disclaimer footer.
+
+The histogram geometry (`lib/histogramLayout.js`) and every sentence (`lib/resultText.js`) are shared with the page, so the PDF can't say something different from the screen.
+
+**No captcha.** The first idea was to protect the button with the same check as the contact form. It was dropped because a captcha only protects work the server does. Here the server does nothing new: the PDF is built from data the visitor already received, using the visitor's own computer, so a captcha checked only in the browser could be skipped from the console and would add friction without protection. The work that is worth protecting, the calculation (`POST /api/benchmark/`), is already throttled.
+
+**Privacy:** the plant name is typed into the export section, not into the calculator, so the calculator keeps its four fields. It is written only into the PDF. It never reaches the server and is never stored, so the benchmark core stays read-only.
+
+**Alternatives considered:**
+
+| Alternative | Why not |
+|---|---|
+| Print stylesheet and "Print → Save as PDF" | Depends on the browser's print dialog, many users don't know to pick "Save as PDF", and the layout is harder to control. |
+| Screenshot of the page turned into a PDF (html2canvas + jsPDF) | Text and charts come out as a blurry image. |
+| Server-side PDF (Django with WeasyPrint or ReportLab) behind a captcha | WeasyPrint is hard to install on Windows; the server would receive the plant name; more to build and run for no real gain. |
+| Browser PDF with a captcha before downloading | A captcha checked only in the browser can be skipped; it adds friction, not protection. |
+
+**Consequences:**
+- `@react-pdf/renderer` adds a ~1.2 MB chunk (~450 KB gzipped). It is loaded only when someone clicks "Download PDF", so page load is unchanged. `vite.config.js` raises the chunk-size warning limit for it.
+- The PDF uses the standard Helvetica and Times fonts that every PDF reader has, instead of the site's web fonts, so no font files are bundled.
+- One page, US Letter. Long industry names or several warnings still fit; checked with a typical result, a fallback cohort and a result with no peer group.
 
 ---
 
